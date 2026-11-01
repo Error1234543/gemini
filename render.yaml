@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: prepgrid-gujarati-pdf-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: RUN_MODE
+        value: polling
