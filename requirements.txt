@@ -1,0 +1,9 @@
+# Telegram interface
+python-telegram-bot[webhooks]==21.10
+
+# PDF Linguist engine (upstream project; MIT license)
+git+https://github.com/NitinReddy-A/PDF_Linguist.git
+
+# Web health endpoint for Render
+Flask>=3.0,<4
+gunicorn>=22,<24
