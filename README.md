@@ -1,68 +1,44 @@
 # PrepGrid Gujarati PDF Translator Bot
 
-Telegram bot integration using the upstream **PDF Linguist** Python package.
+Telegram bot powered by the upstream [PDF Linguist](https://github.com/NitinReddy-A/PDF_Linguist) package (MIT license).
 
-Upstream engine: https://github.com/NitinReddy-A/PDF_Linguist  
-Upstream license: MIT (see the upstream repository).
+## What it does
+- Receives PDF documents in Telegram.
+- Translates English PDF text to Gujarati using PDF Linguist's Google backend.
+- Uses layout-aware PDF extraction and Indic-script rendering.
+- Sends the translated PDF back to the sender.
+- Removes temporary files after processing.
 
-## Features
+## Render deployment
+This repository is configured as a Render **Web Service** using Telegram webhooks.
 
-- Receive PDF documents in Telegram.
-- Translate English PDF text to Gujarati (Google engine).
-- Use PDF Linguist for layout-aware extraction and Gujarati shaping.
-- Return a translated PDF to the sender.
-- Temporary working files are removed after each request.
+1. Create a new Render Web Service from this GitHub repository.
+2. Choose the Free instance for initial testing.
+3. Render reads `render.yaml`; build command is `pip install --no-cache-dir -r requirements.txt`.
+4. Add environment variable `BOT_TOKEN` with your Telegram bot token in Render's Environment tab.
+5. Deploy. The root URL should return a JSON health response.
 
-## Important current deployment profile
+Do not commit a real token to GitHub. If a token is exposed, revoke it with BotFather and generate a replacement.
 
-This starter is deliberately configured for low-memory hosting:
-- OCR is disabled (`ocr="never"`). Scanned/image-only PDFs are not translated.
-- The bot rejects files larger than 19 MB.
-- The bot limits PDFs to 200 pages.
-- Translation uses Google's online translation backend and may be rate-limited.
-- Formula accuracy, option alignment and page layout must be manually checked.
-- Render Free has limited RAM/CPU and ephemeral storage. Large PDFs can fail or time out.
+## Current low-memory profile
+- OCR disabled (`ocr="never"`): scanned/image-only pages are not translated in this configuration.
+- Telegram file download limit configured to 19 MB.
+- PDF page limit: 200.
+- Google translation is online and may be rate-limited.
+- Render Free has limited RAM/CPU and sleeps when idle. A cold start may delay Telegram webhook processing. Large PDFs may time out or run out of memory.
+- For reliability, move to a paid always-on service and test with small PDFs first.
 
-## Install
-
-Python 3.10+ is required.
-
-```bash
-pip install --no-cache-dir -r requirements.txt
-```
-
-## Configure token
-
-Preferred: set the Render environment variable `BOT_TOKEN`.
-
-For local-only testing, replace the placeholder in `config.py`. Never commit a real token to a public repository. If a token is exposed, revoke it with BotFather and create a new one.
-
-## Run locally
+## Local development
+Install requirements, set `BOT_TOKEN` in environment or `config.py`, then run:
 
 ```bash
-python bot.py
+uvicorn bot:app --host 0.0.0.0 --port 8000
 ```
 
-## Render
+For local webhook testing, expose the local server through a trusted HTTPS tunnel and set `RENDER_EXTERNAL_HOSTNAME` accordingly.
 
-This repository currently uses long-polling mode in `render.yaml`. Render Free web services can sleep when idle; the bot may be unavailable until the service wakes, and polling may be interrupted. For reliable always-on bot operation, use an always-on worker/paid instance or convert the deployment to a webhook service.
+## NEET paper quality warning
+No automated translator can guarantee zero errors. Compare every translated question, answer choice, formula, unit, scientific name and diagram label against the source PDF before sharing with students.
 
-Build command:
-```bash
-pip install --no-cache-dir -r requirements.txt
-```
-
-Start command:
-```bash
-python bot.py
-```
-
-Set `BOT_TOKEN` in Render Environment.
-
-## NEET exam-paper warning
-
-Do not assume a translated PDF is error-free. Before distributing it, compare every question, answer option, unit, scientific term, formula, diagram label and question number against the English source. The bot reports engine failures but cannot certify translation correctness.
-
-## Project note
-
-This repository contains the Telegram integration and installs PDF Linguist from its public GitHub repository through `requirements.txt`; it does not copy or vendor the upstream engine source. This keeps upstream updates and licensing clearer.
+## Upstream source
+This repository installs PDF Linguist from its original public GitHub repository via `requirements.txt`; it does not duplicate or claim ownership of the upstream source. See the upstream MIT license and attribution.
