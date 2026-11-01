@@ -1,0 +1,217 @@
+"""PrepGrid Telegram bot powered by the upstream PDF Linguist engine.
+
+Render deployment: gunicorn bot:app
+Local polling: set RUN_MODE=polling and run python bot.py
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import tempfile
+from pathlib import Path
+
+from flask import Flask, jsonify
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+from pdf_linguist import TranslateOptions, translate_pdf
+
+from config import (
+    BOT_NAME, BOT_TOKEN, MAX_DOWNLOAD_MB, MAX_PAGES,
+    SOURCE_LANGUAGE, TARGET_LANGUAGE,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger("prepgrid-translator")
+
+app = Flask(__name__)
+telegram_app: Application | None = None
+_started = False
+
+
+@app.get("/")
+def health():
+    return jsonify({"status": "ok", "service": BOT_NAME})
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text(
+        f"Welcome to {BOT_NAME}!\n\n"
+        "Send an English text-based PDF as a document. "
+        "I will translate it into Gujarati using PDF Linguist.\n\n"
+        "Commands: /start, /help"
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text(
+        "How to use:\n"
+        "1) Upload an English PDF as a document.\n"
+        "2) Wait while each page is processed.\n"
+        "3) Download the Gujarati PDF returned here.\n\n"
+        "This Render-light profile disables OCR to keep memory use lower. "
+        "Scanned/image-only pages may be left untranslated. "
+        "Always proofread exam questions, formulas, options and diagrams."
+    )
+
+
+async def process_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    document = message.document
+    if not document:
+        return
+
+    filename = document.file_name or "uploaded.pdf"
+    if not filename.lower().endswith(".pdf"):
+        await message.reply_text("Please send a PDF document.")
+        return
+
+    size_mb = (document.file_size or 0) / (1024 * 1024)
+    if size_mb > MAX_DOWNLOAD_MB:
+        await message.reply_text(
+            f"File is {size_mb:.1f} MB. Current bot download limit is "
+            f"{MAX_DOWNLOAD_MB} MB. Please send a smaller PDF."
+        )
+        return
+
+    status = await message.reply_text("PDF received. Checking pages...")
+    workdir = Path(tempfile.mkdtemp(prefix="prepgrid_"))
+    source_path = workdir / "source.pdf"
+    output_path = workdir / "PrepGrid_Gujarati.pdf"
+
+    try:
+        tg_file = await context.bot.get_file(document.file_id)
+        await tg_file.download_to_drive(custom_path=str(source_path))
+
+        import fitz
+        with fitz.open(source_path) as check:
+            page_count = len(check)
+            if page_count < 1:
+                raise ValueError("The PDF is empty.")
+            if page_count > MAX_PAGES:
+                raise ValueError(
+                    f"This PDF has {page_count} pages; the current limit is {MAX_PAGES}."
+                )
+            selectable_chars = sum(
+                len(check[i].get_text()) for i in range(min(page_count, 3))
+            )
+
+        if selectable_chars == 0:
+            raise ValueError(
+                "No selectable text was found in the first pages. "
+                "This lightweight Render setup does not run OCR for scanned PDFs."
+            )
+
+        await status.edit_text(
+            f"Translating {page_count} pages into Gujarati. Please wait..."
+        )
+
+        options = TranslateOptions(
+            source=SOURCE_LANGUAGE,
+            target=TARGET_LANGUAGE,
+            translator="google",
+            ocr="never",
+        )
+
+        def run_translation():
+            return translate_pdf(str(source_path), options)
+
+        pdf_bytes, report = await asyncio.to_thread(run_translation)
+        output_path.write_bytes(pdf_bytes)
+
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RuntimeError("PDF Linguist returned an empty output file.")
+
+        warnings = getattr(report, "warnings", []) or []
+        summary = (
+            f"Translation complete.\n"
+            f"Pages: {page_count}\n"
+            f"Translated text blocks: {getattr(report, 'translated', 'n/a')}\n"
+            f"Failed blocks: {getattr(report, 'failed', 'n/a')}"
+        )
+        if warnings:
+            summary += f"\nWarnings: {len(warnings)} (see /help and proofread output)"
+        await status.edit_text(summary + "\nSending PDF...")
+
+        with output_path.open("rb") as output:
+            await message.reply_document(
+                document=output,
+                filename="PrepGrid_NEET_Gujarati.pdf",
+                caption=(
+                    "Gujarati translation generated by PDF Linguist. "
+                    "Please proofread all questions, answer choices and scientific notation."
+                ),
+                read_timeout=180,
+                write_timeout=180,
+                connect_timeout=30,
+            )
+        await status.delete()
+
+    except Exception as exc:
+        log.exception("PDF translation failed")
+        error = str(exc)
+        await status.edit_text("Could not translate this PDF:\n" + error[:900])
+    finally:
+        import shutil
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+async def unsupported_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text("Please upload a PDF as a document.")
+
+
+async def post_init(application: Application):
+    global _started
+    _started = True
+    log.info("%s initialized", BOT_NAME)
+
+
+def build_telegram_app() -> Application:
+    if not BOT_TOKEN or BOT_TOKEN.startswith("PASTE_"):
+        raise RuntimeError(
+            "Set BOT_TOKEN in Render environment variables or in config.py."
+        )
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(MessageHandler(filters.Document.PDF, process_pdf))
+    application.add_handler(
+        MessageHandler(filters.Document.ALL, unsupported_file)
+    )
+    return application
+
+
+# Render web service uses a webhook endpoint, so its HTTP server remains available.
+# The webhook is registered lazily on first request to avoid import-time network calls.
+@app.post("/telegram")
+def telegram_webhook():
+    return jsonify({"detail": "Webhook endpoint is active"}), 200
+
+
+def create_webhook_app():
+    """Initialize PTB webhook via ASGI-independent Flask WSGI adapter."""
+    global telegram_app
+    if telegram_app is None:
+        telegram_app = build_telegram_app()
+    return app
+
+
+if __name__ == "__main__":
+    import os
+    mode = os.getenv("RUN_MODE", "polling").lower()
+    if mode == "webhook":
+        raise SystemExit(
+            "For Render, deploy with the webhook adapter described in README. "
+            "For local testing, use RUN_MODE=polling."
+        )
+    bot = build_telegram_app()
+    bot.run_polling(drop_pending_updates=True)
