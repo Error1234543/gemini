@@ -4,7 +4,7 @@
  * Execute as: Me
  * Who has access: Anyone
  */
-const UPLOAD_SECRET = "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET";
+const UPLOAD_SECRET = "SONIC@#701699";
 const FOLDER_ID = "1VltR40-Vvb_qNMtRzIZjUZ0WygsPOr6l";
 
 function doPost(e) {
