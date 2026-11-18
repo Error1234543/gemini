@@ -5,7 +5,7 @@
  * Who has access: Anyone
  */
 const UPLOAD_SECRET = "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET";
-const FOLDER_ID = "PASTE_GOOGLE_DRIVE_FOLDER_ID_HERE";
+const FOLDER_ID = "1VltR40-Vvb_qNMtRzIZjUZ0WygsPOr6l";
 
 function doPost(e) {
   try {
