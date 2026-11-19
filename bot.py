@@ -66,7 +66,24 @@ def upload_to_drive(data: bytes, filename: str) -> dict:
 
 # ---------- Telegram handlers ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Mujhe PDF file bhejo, main Drive me upload karke link de dunga.")
+    await update.message.reply_text(
+        "🚀 PREPGRID PDF UPLOAD CENTER\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Welcome! Your personal Google Drive upload assistant is ready.\n\n"
+        "📄 HOW TO UPLOAD\n"
+        "1️⃣ Select your PDF file in Telegram.\n"
+        "2️⃣ Send it here as a Document (not as a Photo).\n"
+        "3️⃣ Wait while the file is securely uploaded to Google Drive.\n"
+        "4️⃣ Get your shareable download link instantly.\n\n"
+        "✨ FEATURES\n"
+        "• Direct Google Drive upload\n"
+        "• Automatic shareable link\n"
+        "• Original PDF filename preserved\n\n"
+        "📌 READY TO BEGIN?\n"
+        "Send your PDF document now.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Your files. One simple upload."
+    )
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
