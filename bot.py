@@ -88,9 +88,9 @@ async def upload_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw = temp_path.read_bytes()
         payload = {
             "secret": DRIVE_UPLOAD_SECRET,
-            "filename": Path(doc.file_name or "PrepGrid.pdf").name,
+            "fileName": Path(doc.file_name or "PrepGrid.pdf").name,
             "mimeType": "application/pdf",
-            "data": base64.b64encode(raw).decode("ascii"),
+            "file": base64.b64encode(raw).decode("ascii"),
         }
         async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True) as client:
             response = await client.post(DRIVE_SCRIPT_URL, json=payload)
