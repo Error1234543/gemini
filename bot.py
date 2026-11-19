@@ -17,6 +17,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("prepgrid-drive-bot")
+# Telegram API URLs contain the bot token; never print them in Render logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = os.getenv("OWNER_ID", "").strip()
@@ -95,7 +98,34 @@ async def upload_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True) as client:
             response = await client.post(DRIVE_SCRIPT_URL, json=payload)
             response.raise_for_status()
-        result = response.json()
+        response_body = response.text.strip()
+        if not response_body:
+            raise RuntimeError(
+                "Google Apps Script returned an EMPTY response "
+                f"(HTTP {response.status_code}, content-type: "
+                f"{response.headers.get('content-type', 'unknown')}). "
+                "Check that the latest Apps Script version is deployed as a Web App "
+                "with access set to Anyone, then verify DRIVE_SCRIPT_URL."
+            )
+        try:
+            result = json.loads(response_body)
+        except json.JSONDecodeError:
+            preview = response_body[:350].replace("\\n", " ")
+            log.error(
+                "Apps Script returned non-JSON: status=%s content_type=%s body_preview=%r",
+                response.status_code,
+                response.headers.get("content-type", "unknown"),
+                preview,
+            )
+            raise RuntimeError(
+                "Google Apps Script returned non-JSON "
+                f"(HTTP {response.status_code}, content-type: "
+                f"{response.headers.get('content-type', 'unknown')}). "
+                f"Response preview: {preview or '[empty]'}. "
+                "Check Apps Script deployment and execution errors."
+            )
+        if not isinstance(result, dict):
+            raise RuntimeError("Google Apps Script response JSON is not an object.")
         if not result.get("ok") or not result.get("url"):
             raise RuntimeError(result.get("error", "Google Drive did not return a file link."))
         await status.edit_text(
