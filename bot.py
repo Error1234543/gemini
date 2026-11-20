@@ -1,13 +1,12 @@
 import os
 import io
-import json
 import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -16,11 +15,14 @@ FOLDER_ID = os.environ["DRIVE_FOLDER_ID"]
 PORT = int(os.environ.get("PORT", 10000))
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
-    info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-else:
-    creds = service_account.Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
+creds = Credentials(
+    token=None,
+    refresh_token=os.environ["REFRESH_TOKEN"],
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id=os.environ["CLIENT_ID"],
+    client_secret=os.environ["CLIENT_SECRET"],
+    scopes=SCOPES,
+)
 
 drive = build("drive", "v3", credentials=creds, cache_discovery=False)
 
@@ -53,13 +55,11 @@ def upload_to_drive(data: bytes, filename: str) -> dict:
         body=meta,
         media_body=media,
         fields="id, name, webViewLink",
-        supportsAllDrives=True,
     ).execute()
 
     drive.permissions().create(
         fileId=file["id"],
         body={"type": "anyone", "role": "reader"},
-        supportsAllDrives=True,
     ).execute()
     return file
 
@@ -67,22 +67,11 @@ def upload_to_drive(data: bytes, filename: str) -> dict:
 # ---------- Telegram handlers ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 PREPGRID PDF UPLOAD CENTER\n"
+        "🚀 PDF UPLOAD CENTER\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Welcome! Your personal Google Drive upload assistant is ready.\n\n"
-        "📄 HOW TO UPLOAD\n"
-        "1️⃣ Select your PDF file in Telegram.\n"
-        "2️⃣ Send it here as a Document (not as a Photo).\n"
-        "3️⃣ Wait while the file is securely uploaded to Google Drive.\n"
-        "4️⃣ Get your shareable download link instantly.\n\n"
-        "✨ FEATURES\n"
-        "• Direct Google Drive upload\n"
-        "• Automatic shareable link\n"
-        "• Original PDF filename preserved\n\n"
-        "📌 READY TO BEGIN?\n"
-        "Send your PDF document now.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "Your files. One simple upload."
+        "Mujhe PDF file Document ke roop mein bhejo (Photo nahi).\n"
+        "Main Google Drive par upload karke link de dunga.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
 
 
@@ -97,7 +86,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tg_file = await doc.get_file()
         data = bytes(await tg_file.download_as_bytearray())
         file = await asyncio.to_thread(upload_to_drive, data, doc.file_name or "file.pdf")
-        await status.edit_text(f"✅ Upload ho gaya!\\n\\n📄 {file['name']}\\n🔗 {file['webViewLink']}")
+        await status.edit_text(
+            f"✅ Upload ho gaya!\n\n📄 {file['name']}\n🔗 {file['webViewLink']}"
+        )
     except Exception as e:
         await status.edit_text(f"❌ Error: {e}")
 
